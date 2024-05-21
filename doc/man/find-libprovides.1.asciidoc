@@ -1,0 +1,24 @@
+find-libprovides(1)
+===================
+
+Name
+----
+find-libprovides - Find soname's which are provided by a package
+
+Synopsis
+--------
+find-libprovides [options]
+
+Description
+-----------
+
+Finds soname's provided by a package and prints out a list in the following
+format '<soname>=<soversion>-<soarch>'.
+
+Options
+-------
+
+*--ignore-internal*::
+	Ignore internal libraries.
+
+include::include/footer.asciidoc[]

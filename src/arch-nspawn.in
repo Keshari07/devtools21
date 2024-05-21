@@ -1,0 +1,148 @@
+#!/bin/bash
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+_DEVTOOLS_LIBRARY_DIR=${_DEVTOOLS_LIBRARY_DIR:-@pkgdatadir@}
+# shellcheck source=src/lib/common.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/common.sh
+# shellcheck source=src/lib/archroot.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/archroot.sh
+
+
+# umask might have been changed in /etc/profile
+# ensure that sane default is set again
+umask 0022
+
+working_dir=''
+
+files=()
+
+usage() {
+	echo "Usage: ${0##*/} [options] working-dir [systemd-nspawn arguments]"
+	echo "A wrapper around systemd-nspawn. Provides support for pacman."
+	echo
+	echo ' options:'
+	echo '    -C <file>           Location of a pacman config file'
+	echo '    -M <file>           Location of a makepkg config file'
+	echo '    -c <dir>            Set pacman cache'
+	echo '    -f <src>[:<dst>]    Copy src file from the host to the chroot.'
+	echo '                        If dst file is not provided, it defaults to src'
+	echo '    -s                  Do not run setarch'
+	echo '    -h                  This message'
+	exit 1
+}
+
+# save all args for check_root
+orig_args=("$@")
+
+while getopts 'hC:M:c:f:s' arg; do
+	case "$arg" in
+		C) pac_conf="$OPTARG" ;;
+		M) makepkg_conf="$OPTARG" ;;
+		c) cache_dirs+=("$OPTARG") ;;
+		f) files+=("$OPTARG") ;;
+		s) nosetarch=1 ;;
+		h|?) usage ;;
+		*) error "invalid argument '%s'" "$arg"; usage ;;
+	esac
+done
+shift $((OPTIND - 1))
+
+(( $# < 1 )) && die 'You must specify a directory.'
+check_root "" "${BASH_SOURCE[0]}" "${orig_args[@]}"
+
+working_dir=$(readlink -f "$1")
+shift 1
+
+[[ -z $working_dir ]] && die 'Please specify a working directory.'
+
+nspawn_args=(
+	--quiet
+	--directory="$working_dir"
+	--setenv="PATH=/usr/local/sbin:/usr/local/bin:/usr/bin"
+	--register=no
+	--slice="devtools-$(systemd-escape "${SUDO_USER:-$USER}")"
+	--machine="arch-nspawn-$$"
+	--as-pid2
+	--console=autopipe
+)
+
+if (( ${#cache_dirs[@]} == 0 )); then
+	mapfile -t cache_dirs < <(pacman-conf --config "${pac_conf:-$working_dir/etc/pacman.conf}" CacheDir)
+fi
+
+# shellcheck disable=2016
+host_mirrors=($(pacman-conf --repo extra Server 2> /dev/null | sed -r 's#(.*/)extra/os/.*#\1$repo/os/$arch#'))
+host_cachemirrors=($(pacman-conf --repo extra CacheServer 2> /dev/null | sed -r 's#(.*/)extra/os/.*#\1$repo/os/$arch#'))
+
+for host_mirror in "${host_mirrors[@]}"; do
+	if [[ $host_mirror == *file://* ]]; then
+		host_mirror=$(echo "$host_mirror" | sed -r 's#file://(/.*)/\$repo/os/\$arch#\1#g')
+		for m in "$host_mirror"/pool/*/; do
+			in_array "$m" "${cache_dirs[@]}" || cache_dirs+=("$m")
+		done
+	fi
+done
+
+while read -r line; do
+	mapfile -t lines < <(pacman-conf --config "${pac_conf:-$working_dir/etc/pacman.conf}" \
+		--repo $line Server | sed -r 's#(.*/)[^/]+/os/.+#\1#')
+	for line in "${lines[@]}"; do
+		if [[ $line = file://* ]]; then
+			line=${line#file://}
+			in_array "$line" "${cache_dirs[@]}" || cache_dirs+=("$line")
+		fi
+	done
+done < <(pacman-conf --config "${pac_conf:-$working_dir/etc/pacman.conf}" --repo-list)
+
+nspawn_args+=(--bind="${cache_dirs[0]//:/\\:}")
+
+for cache_dir in "${cache_dirs[@]:1}"; do
+	nspawn_args+=(--bind-ro="${cache_dir//:/\\:}")
+done
+
+# {{{ functions
+copy_hostconf () {
+	unshare --fork --pid gpg --homedir "$working_dir"/etc/pacman.d/gnupg/ --no-permission-warning --quiet --batch --import --import-options import-local-sigs "$(pacman-conf GpgDir)"/pubring.gpg >/dev/null 2>&1
+	pacman-key --gpgdir "$working_dir"/etc/pacman.d/gnupg/ --import-trustdb "$(pacman-conf GpgDir)" >/dev/null 2>&1
+
+	printf 'Server = %s\n' "${host_mirrors[@]}" >"$working_dir/etc/pacman.d/mirrorlist"
+
+	[[ -n $host_cachemirrors ]] && printf 'CacheServer = %s\n' "${host_cachemirrors[@]}" >>"$working_dir/etc/pacman.d/mirrorlist"
+
+	[[ -n $pac_conf ]] && cp "$pac_conf" "$working_dir/etc/pacman.conf"
+	[[ -n $makepkg_conf ]] && cp "$makepkg_conf" "$working_dir/etc/makepkg.conf"
+
+	local file
+	for file in "${files[@]}"; do
+		src="${file%%:*}"
+		dst="${file#*:}"
+		mkdir -p "$(dirname "$working_dir$dst")"
+		cp -T "$src" "$working_dir$dst"
+	done
+
+	sed -r "s|^#?\\s*CacheDir.+|CacheDir = ${cache_dirs[*]}|g" -i "$working_dir/etc/pacman.conf"
+}
+# }}}
+
+umask 0022
+
+# Sanity check
+if [[ ! -f "$working_dir/.arch-chroot" ]]; then
+	die "'%s' does not appear to be an Arch chroot." "$working_dir"
+elif [[ $(cat "$working_dir/.arch-chroot") != "$CHROOT_VERSION" ]]; then
+	die "chroot '%s' is not at version %s. Please rebuild." "$working_dir" "$CHROOT_VERSION"
+fi
+
+copy_hostconf
+
+eval "$(grep -a '^CARCH=' "$working_dir/etc/makepkg.conf")"
+
+[[ -z $nosetarch ]] || unset CARCH
+if [[ -f "@pkgdatadir@/setarch-aliases.d/${CARCH}" ]]; then
+	read -r set_arch < "@pkgdatadir@/setarch-aliases.d/${CARCH}"
+else
+	set_arch="${CARCH}"
+fi
+
+exec ${CARCH:+setarch "$set_arch"} systemd-nspawn "${nspawn_args[@]}" "$@"

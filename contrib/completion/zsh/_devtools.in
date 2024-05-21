@@ -1,0 +1,369 @@
+#compdef archbuild arch-nspawn archrelease commitpkg pkgctl diffpkg finddeps makechrootpkg mkarchroot extrapkg=commitpkg corepkg=commitpkg testingpkg=commitpkg stagingpkg=commitpkg communitypkg=commitpkg community-testingpkg=commitpkg community-stagingpkg=commitpkg multilibpkg=commitpkg multilib-testingpkg=commitpkg extra-x86_64-build=archbuild testing-x86_64-build=archbuild staging-x86_64-build=archbuild multilib-build=archbuild multilib-testing-build=archbuild multilib-staging-build=archbuild kde-unstable-x86_64-build=archbuild gnome-unstable-x86_64-build=archbuild checkpkg sogrep offload-build makerepropkg
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+_DEVTOOLS_LIBRARY_DIR=${_DEVTOOLS_LIBRARY_DIR:-@pkgdatadir@}
+# shellcheck source=src/lib/valid-build-install.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/valid-build-install.sh
+# shellcheck source=src/lib/valid-tags.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/valid-tags.sh
+# shellcheck source=src/lib/valid-repos.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/valid-repos.sh
+# shellcheck source=src/lib/valid-inspect.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/valid-inspect.sh
+# shellcheck source=src/lib/valid-search.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/valid-search.sh
+
+_colors=(never always auto)
+
+_archbuild_args=(
+	'-c[Recreate the chroot before building]'
+	'-r[Create chroots in this directory]:base_dir:_files -/'
+	'-h[Display usage]'
+	'--[Introduce makechrootpkg options]:*::makechrootpkg options:=  _dispatch makechrootpkg makechrootpkg'
+)
+
+_pkgctl_auth_cmds=(
+	"pkgctl auth command"
+	"login[Authenticate with the GitLab instance]"
+	"status[View authentication status]"
+)
+
+_pkgctl_auth_login_args=(
+	'(-g --gen-access-token)'{-g,--gen-access-token}'[Open the URL to generate a new personal access token]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+)
+
+_pkgctl_auth_status_args=(
+	'(-t --show-token)'{-t,--show-token}'[Display the auth token]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+)
+
+_pkgctl_build_args=(
+	"--arch[Specify architectures to build for (disables auto-detection)]:arch:($DEVTOOLS_VALID_BINARY_ARCHES[*])"
+	"--repo[Specify a target repository (disables auto-detection)]:repo:($DEVTOOLS_VALID_REPOS[*])"
+	'(-s --staging)'{-s,--staging}'[Build against the staging counterpart of the auto-detected repo]'
+	'(-t --testing)'{-t,--testing}'[Build against the testing counterpart of the auto-detected repo]'
+	'(-o --offload)'{-o,--offload}'[Build on a remote server and transfer artifacts afterwards]'
+	'(-c --clean)'{-c,--clean}'[Recreate the chroot before building]'
+	"--inspect[Spawn an interactive shell to inspect the chroot (never, always, failure)]:inspect:($DEVTOOLS_VALID_INSPECT_MODES[*])"
+	'*'{-I,--install-to-chroot}'[Install a package to the working copy of the chroot]:target:_files -g "*.pkg.tar.*(.)"'
+	'*'{-i,--install-to-host}"[Install the built packages to the host system]:mode:($DEVTOOLS_VALID_BUILD_INSTALL[*])"
+	'(-w --worker)'{-w,--worker}'[Name of the worker slot, useful for concurrent builds (disables auto-detection)]:slot:'
+	'--nocheck[Do not run the check() function in the PKGBUILD]'
+	'--pkgver=[Set pkgver, reset pkgrel and update checksums]:pkgver:'
+	'--pkgrel=[Set pkgrel to a given value]:pkgrel:'
+	'--rebuild[Increment the pkgrel variable]'
+	'--update-checksums[Force computation and update of the checksums (disables auto-detection)]'
+	'(-e --edit)'{-e,--edit}'[Edit the PKGBUILD before building]'
+	'(-r --release)'{-r,--release}'[Automatically commit, tag and release after building]'
+	'(-m --message=)'{-m,--message=}"[Use the given <msg> as the commit message]:message:"
+	'(-u --db-update)'{-u,--db-update}'[Automatically update the pacman database as last action]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'*:git_dir:_files -/'
+)
+
+_pkgctl_db_cmds=(
+	"pkgctl db command"
+	"move[Move packages between pacman repositories]"
+	"remove[Remove packages from pacman repositories]"
+	"update[Update the pacman database as final release step]"
+)
+
+_pkgctl_db_move_args=(
+	'(-h --help)'{-h,--help}'[Display usage]'
+	"1:src-repo:($DEVTOOLS_VALID_REPOS[*])"
+	"2:target-repo:($DEVTOOLS_VALID_REPOS[*])"
+	'*:pkgbase:_devtools_completions_all_packages'
+)
+
+_pkgctl_db_remove_args=(
+	'--partial[Remove only partial pkgnames from a split package]'
+	'--noconfirm[Bypass any confirmation messages, should only be used with caution]'
+	'(-a --arch)'{-a,--arch}"[Override the architecture (disables auto-detection)]:arch:($DEVTOOLS_VALID_BINARY_ARCHES[*])"
+	'(-h --help)'{-h,--help}'[Display usage]'
+	"1:repo:($DEVTOOLS_VALID_REPOS[*])"
+	'*:pkgbase:_devtools_completions_all_packages'
+)
+
+_pkgctl_db_update_args=(
+	'(-h --help)'{-h,--help}'[Display usage]'
+)
+
+_pkgctl_release_args=(
+	'(-m --message=)'{-m,--message=}"[Use the given <msg> as the commit message]:message:"
+	'(-r --repo=)'{-r,--repo=}"[Specify a target repository for new packages]:repo:($DEVTOOLS_VALID_REPOS[*])"
+	'(-s --staging)'{-s,--staging}'[Release to the staging counterpart of the auto-detected repo]'
+	'(-t --testing)'{-t,--testing}'[Release to the testing counterpart of the auto-detected repo]'
+	'(-u --db-update)'{-u,--db-update}'[Automatically update the pacman database after uploading]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'*:git_dir:_files -/'
+)
+
+_pkgctl_aur_cmds=(
+	"pkgctl aur command"
+	"drop-from-repo[Drop a package from the official repository to the AUR]"
+)
+
+_pkgctl_aur_drop_from_repo_args=(
+	'(-f --force)'{-f,--force}'[Force push to the AUR overwriting the remote repository]'
+	'--no-disown[Do not disown the package on the AUR]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'*:git_dir:_files -/'
+)
+
+_pkgctl_repo_cmds=(
+	"pkgctl repo command"
+	"clean[Remove untracked files from the working tree]"
+	"clone[Clone a package repository]"
+	"configure[Configure a clone according to distro specs]"
+	"create[Create a new GitLab package repository]"
+	"switch[Switch a package repository to a specified version]"
+	"web[Open the packaging repository's website]"
+)
+
+_pkgctl_repo_switch_args=(
+	'(-f --force --discard-changes)'{-f,--force,--discard-changes}'[Discard changes if index or working tree is dirty]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'1:version'
+	'*:git_dir:_files -/'
+)
+
+_pkgctl_repo_clean_args=(
+	'(-i --interactive)'{-i,--interactive}'[Show what would be done and clean files interactively]'
+	'(-n --dry-run)'{-n,--dry-run}"[Don't remove anything, just show what would be done]"
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'*:git_dir:_files -/'
+)
+
+_pkgctl_repo_clone_args=(
+	'(-m --maintainer=)'{-m,--maintainer=}'[Clone all packages of the named maintainer]:maintainer:'
+	'--protocol[Clone the repository over https]:proto:(https)'
+	'--switch=[Switch the current working tree to a specified version]'
+	'--universe[Clone all existing packages, useful for cache warming]'
+	'(-j --jobs)'{-j,--jobs}'[Run up to N jobs in parallel (default: number of processing units)]:jobs:'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'*:packages:_devtools_completions_all_packages'
+)
+
+_pkgctl_repo_configure_args=(
+	'--protocol[Configure remote url to use https]:proto:(https)'
+	'(-j --jobs)'{-j,--jobs}'[Run up to N jobs in parallel (default: number of processing units)]:jobs:'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'*:git_dir:_files -/'
+)
+
+_pkgctl_repo_create_args=(
+	'(-c --clone)'{-c,--clone}'[Clone the Git repository after creation]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'1:pkgbase'
+)
+
+_pkgctl_repo_web_args=(
+	'--print[Print the url instead of opening it with xdg-open]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'*:git_dir:_files -/'
+)
+
+_pkgctl_search_args=(
+	'--no-default-filter[Do not apply default filter (like -path:keys/pgp/*.asc)]'
+	'--json[Enable printing results in JSON]'
+	'(-F --format)'{-F,--format}"[Controls the formatting of the results]:format:($valid_search_output_format[*])"
+	'(-N --no-line-number)'{-N,--no-line-number}"[Don't show line numbers when formatting results]"
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'1:query'
+)
+
+_arch_nspawn_args=(
+	'-C[Location of a pacman config file]:pacman_config:_files -g "*.conf(.)"'
+	'-M[Location of a makepkg config file]:makepkg_config:_files -g "*.conf(.)"'
+	'*-c[Set pacman cache]:pacman_cache:_files -/'
+	'*-f[Copy file from the host to the chroot]:copy_file:_files'
+	'-s[Do not run setarch]'
+	'-h[Display usage]'
+	'1:chroot_dir:_files -/'
+)
+
+_archrelease_args=(
+	'-f[Force release without checks]'
+	"*:arch:($DEVTOOLS_VALID_TAGS[*])"
+)
+
+_commitpkg_args=(
+	'-f[Force release without checks]'
+	'-s[Target repo server]'
+	'-l[Set bandwidth limit]:limit'
+	"-a[Release to a specific architecture only]:arch:($DEVTOOLS_VALID_ARCHES[*])"
+	'1:commit_msg'
+)
+
+_diffpkg_args=(
+	'(-l --list)'{-l,--list}'[Tar content list diff mode]'
+	'(-d --diffoscope)'{-d,--diffoscope}'[Diffoscope diff mode]'
+	'(-p --pkginfo)'{-p,--pkginfo}'[.PKGINFO diff mode]'
+	'(-b --buildinfo)'{-b,--buildinfo}'[.BUILDINFO diff mode]'
+	'(-m --makepkg-config)'{-m,--makepkg-config}'[Location of a makepkg config file]:makepkg_config:_files -g "*.conf(.)"'
+	'(-u -U --unified)'{-u,-U,--unified}'[Output 3 lines of unified context]'
+	'(-y --side-by-side)'{-y,--side-by-side}'[Output in two columns]'
+	'--color=[Color output]:when:($_colors[*])'
+	'(-W --width=)'{-W,--width=}'[Output at most NUM print columns]:num:(auto columns)'
+	'(-P --pool=)'{-P,--pool=}'[pool directory]:dir:_files -/'
+	'(-v --verbose)'{-v,--verbose}'[Provide more detailed/unfiltered output]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'*:packages:_devtools_completions_all_packages'
+)
+
+_finddeps_args=(
+	'1:packages:_devtools_completions_all_packages'
+)
+
+_makechrootpkg_args=(
+	'-h[Display usage]'
+	'-c[Clean the chroot before building]'
+	'*-d[Bind directory into build chroot as read-write]:bind_dir_rw:_files -/'
+	'*-D[Bind directory into build chroot as read-only]:bind_dir_ro:_files -/'
+	'*-t[Mount a tmpfs at directory]:tmpfs_dir:_files -/'
+	'-u[Update the working copy of the chroot before building]'
+	'-r[The chroot dir to use]:chroot_dir:_files -/'
+	'*-I[Install a package into the working copy]:target:_files -g "*.pkg.tar.*(.)"'
+	'-l[The directory to use as the working copy]:copy_dir:_files -/'
+	'-n[Run namcap on the package]'
+	'-T[Build in a temporary directory]'
+	'-U[Run makepkg as a specified user]:makepkg_user'
+	"-x[Spawn an interactive shell to inspect the chroot (never, always, failure)]:inspect:($DEVTOOLS_VALID_INSPECT_MODES[*])"
+)
+
+_mkarchroot_args=(
+	'-U[Install a package into the working copy]:target:_files -g "*.pkg.tar.*(.)"'
+	'-C[Location of a pacman config file]:pacman_config:_files -g "*.conf(.)"'
+	'-M[Location of a makepkg config file]:makepkg_config:_files -g "*.conf(.)"'
+	'-c[Set pacman cache]:pacman_cache:_files -/'
+	'-f[Copy src file from the host to the chroot]:target:_files -/'
+	'-h[Display usage]'
+	'1:working_dir:_files -/'
+	'*:packages:_devtools_completions_all_packages'
+)
+
+_checkpkg_args=(
+	'(-r --rmdir)'{-r,--rmdir}'[Remove the temporary directory]'
+	'(-w --warn)'{-w,--warn}'[Print a warning in case of differences]'
+	'(-M --makepkg-config)'{-M,--makepkg-config}'[Location of a makepkg config file]:makepkg_config:_files -g "*.conf(.)"'
+	'(-h --help)'{-h,--help}'[Display usage]'
+)
+
+_sogrep_args=(
+	'(-v --verbose)'{-v,--verbose}'[Show matched links in addition to pkgname]'
+	'(-r --refresh)'{-r,--refresh}'[Refresh the links databases]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'1:repo:(all $DEVTOOLS_VALID_REPOS[*])'
+	'2:libname'
+)
+
+_offload_build_args=(
+	'(-r --repo)'{-r,--repo}'[Build against a specific repository]:repo:($DEVTOOLS_VALID_BUILDREPOS[*])'
+	'(-a --arch)'{-a,--arch}'[Build against a specific architecture]:arch:(${DEVTOOLS_VALID_BINARY_ARCHES[*]})'
+	'(-s --server)'{-s,--server}'[Offload to a specific Build server]:server:'
+	'(-h --help)'{-h,--help}'[Display usage]'
+)
+
+_makerepropkg_args=(
+	'-d[Run diffoscope if the package is unreproducible]'
+	'-n[Do not run the check() function in the PKGBUILD]'
+	'-c[Set pacman cache]:pacman_cache:_files -/'
+	'-M[Location of a makepkg config file]:makepkg_config:_files -g "*.conf(.)"'
+	'-h[Display usage]'
+	'*:working_dir:_files -g "*.pkg.tar.*(.)"'
+)
+
+_devtools_completions_all_packages() {
+	typeset -U packages
+	packages=($(_call_program packages pacman -Sql))
+	compadd - "${(@)packages}"
+}
+
+_pkgctl_cmds=(
+	"pkgctl command"
+	"aur[Interact with the Arch User Repository (AUR)]"
+	"auth[Authenticate with services like GitLab]"
+	"build[Build packages inside a clean chroot]"
+	"db[Pacman database modification for package update, move etc]"
+	"diff[Compare package files using different modes]"
+	"release[Release step to commit, tag and upload build artifacts]"
+	"repo[Manage Git packaging repositories and their configuration]"
+	"search[Search for an expression across the GitLab packaging group]"
+	"version[Check and manage package versions against upstream]"
+)
+
+_pkgctl_args=(
+	'(-V --version)'{-V,--version}'[Show pkgctl version information]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+)
+
+_pkgctl_version_cmds=(
+	"pkgctl version command"
+	"check[Compares local package versions against upstream versions]"
+	"setup[Automatically detect and setup a basic nvchecker config]"
+	"upgrade[Adjust the PKGBUILD to match the latest upstream version]"
+)
+
+_pkgctl_version_check_args=(
+	'(-v --verbose)'{-v,--verbose}'[Display results including up-to-date versions]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'*:git_dir:_files -/'
+)
+
+_pkgctl_version_setup_args=(
+	'(-f --force)'{-f,--force}'[Do not prompt before overwriting]'
+	'--prefer-platform-api[Prefer platform specific GitHub/GitLab API for complex cases]'
+	'--url[Derive check target from URL instead of source array]:url:'
+	'--no-check[Do not run version check after setup]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'*:git_dir:_files -/'
+)
+
+_pkgctl_version_upgrade_args=(
+	'--no-update-checksums[Disable computation and update of the checksums]'
+	'(-v --verbose)'{-v,--verbose}'[Display results including up-to-date versions]'
+	'(-h --help)'{-h,--help}'[Display usage]'
+	'*:git_dir:_files -/'
+)
+
+_pkgctl_diff_args=("${_diffpkg_args[@]}")
+
+_handle_subcommands() {
+	local service_name=${1}
+	if typeset -p ${service_name}_cmds &> /dev/null; then
+		_arguments -C \
+			"1: :->cmds" \
+			'*::arg:->args'
+		case $state in
+			cmds)
+				if [[ "${line[-1]}" == -* ]] && typeset -p ${service_name}_args &> /dev/null; then
+					local argname="${service_name}_args[@]"
+					_arguments -s "${(P)argname}"
+				else
+					local service_cmds=${service_name}_cmds[@]
+					_values "${(P)service_cmds}"
+				fi
+				;;
+			args)
+				local service_sub=${service_name}_${line[1]//-/_}
+				if typeset -p ${service_sub}_args &> /dev/null; then
+					local cmd_args=${service_sub}_args[@]
+					_arguments -s "${(P)cmd_args}"
+				elif typeset -p ${service_sub}_cmds &> /dev/null; then
+					_handle_subcommands "${service_sub}"
+				fi
+				;;
+		esac
+	elif typeset -p ${service_name}_args &> /dev/null; then
+		local argname="${service_name}_args[@]"
+		_arguments -s "${(P)argname}"
+	fi
+}
+
+_devtools() {
+	_handle_subcommands _${service//-/_}
+}
+
+_devtools

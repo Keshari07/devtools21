@@ -1,0 +1,40 @@
+pkgctl-auth-login(1)
+====================
+
+Name
+----
+pkgctl-auth-login - Authenticate with the GitLab instance
+
+Synopsis
+--------
+pkgctl auth login [OPTIONS]
+
+Description
+-----------
+
+Interactively authenticate with the GitLab instance.
+
+The minimum required scopes for the token are: 'api', 'write_repository'.
+
+The GitLab API token can either be stored in a plaintext file in
+'$XDG_CONFIG_HOME/devtools/gitlab.conf', or supplied via the
+'DEVTOOLS_GITLAB_TOKEN' environment variable using any command (gpg, vault,
+password manager) by declaring a shell alias:
+
+    $ alias pkgctl='DEVTOOLS_GITLAB_TOKEN="$(command to obtain token)" pkgctl'
+
+Options
+-------
+
+*-g, --gen-access-token*::
+	Open the URL to generate a new personal access token
+
+*-h, --help*::
+	Show a help text
+
+See Also
+--------
+
+pkgctl-auth-status(1)
+
+include::include/footer.asciidoc[]

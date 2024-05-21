@@ -1,0 +1,145 @@
+#!/bin/bash
+#
+# offload-build - build a PKGBUILD on a remote server using makechrootpkg.
+#
+# Copyright (c) 2019 by Eli Schwartz <eschwartz@archlinux.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+_DEVTOOLS_LIBRARY_DIR=${_DEVTOOLS_LIBRARY_DIR:-@pkgdatadir@}
+# shellcheck source=src/lib/common.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/common.sh
+# shellcheck source=src/lib/util/makepkg.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/util/makepkg.sh
+
+source /usr/share/makepkg/util/config.sh
+
+# Deprecation warning
+if [[ -z $_DEVTOOLS_COMMAND ]]; then
+	warning "${0##*/} is deprecated and will be removed. Use 'pkgctl build --offload' instead"
+fi
+
+# global defaults suitable for use by Arch staff
+repo=extra
+arch=x86_64
+server=build.archlinux.org
+rsyncopts=("${RSYNC_OPTS[@]}")
+
+usage() {
+    cat <<- _EOF_
+		Usage: ${BASH_SOURCE[0]##*/} [--repo REPO] [--arch ARCHITECTURE] [--server SERVER] -- [ARCHBUILD_ARGS]
+
+		Build a PKGBUILD on a remote server using makechrootpkg. Requires a remote user
+		that can run archbuild without password auth. Options passed after a -- are
+		passed on to archbuild, and eventually to makechrootpkg.
+
+		OPTIONS
+		    -r, --repo      Build against a specific repository (current: $repo)
+		    -a, --arch      Build against a specific architecture (current: $arch)
+		    -s, --server    Offload to a specific build server (current: $server)
+		    -h, --help      Show this help text
+_EOF_
+}
+
+# option checking
+while (( $# )); do
+    case $1 in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -r|--repo)
+            repo=$2
+            shift 2
+            ;;
+        -a|--arch)
+            arch=$2
+            shift 2
+            ;;
+        -s|--server)
+            server=$2
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            die "invalid argument: %s" "$1"
+            ;;
+    esac
+done
+
+# multilib must be handled specially
+archbuild_arch="${arch}"
+if [[ $repo = multilib* ]]; then
+    archbuild_arch=
+fi
+
+archbuild_cmd=("${repo}${archbuild_arch:+-$archbuild_arch}-build" "$@")
+
+trap 'rm -rf $TEMPDIR' EXIT INT TERM QUIT
+
+# Load makepkg.conf variables to be available
+load_makepkg_config
+
+# Use a source-only tarball as an intermediate to transfer files. This
+# guarantees the checksums are okay, and guarantees that all needed files are
+# transferred, including local sources, install scripts, and changelogs.
+export TEMPDIR=$(mktemp -d --tmpdir offload-build.XXXXXXXXXX)
+export SRCPKGDEST=${TEMPDIR}
+makepkg_source_package || die "unable to make source package"
+
+# Temporary cosmetic workaround makepkg if SRCDEST is set somewhere else
+# but an empty src dir is created in PWD. Remove once fixed in makepkg.
+rmdir --ignore-fail-on-non-empty src 2>/dev/null || true
+
+mapfile -t files < <(
+    # This is sort of bash golfing but it allows running a mildly complex
+    # command over ssh with a single connection.
+    # shellcheck disable=SC2145
+    cat "$SRCPKGDEST"/*"$SRCEXT" |
+        ssh $server '
+            export TERM="'"${TERM}"'"
+            temp="${XDG_CACHE_HOME:-$HOME/.cache}/offload-build" &&
+            mkdir -p "$temp" &&
+            temp=$(mktemp -d -p "$temp") &&
+            cd "$temp" &&
+            {
+                bsdtar --strip-components 1 -xvf - &&
+                export LOGDEST="" &&
+                script -qefc "'"${archbuild_cmd[@]@Q}"'" /dev/null &&
+                printf "%s\n" "" "-> build complete" &&
+                printf "\t%s\n" "$temp"/*
+            } >&2 &&
+            makepkg_user_config="${XDG_CONFIG_HOME:-$HOME/.config}/pacman/makepkg.conf" &&
+            makepkg_config="/usr/share/devtools/makepkg.conf.d/'"${arch}"'.conf" &&
+            if [[ -f /usr/share/devtools/makepkg.conf.d/'"${repo}"'-'"${arch}"'.conf ]]; then
+                makepkg_config="/usr/share/devtools/makepkg.conf.d/'"${repo}"'-'"${arch}"'.conf"
+            fi &&
+            while read -r file; do
+                [[ -f "${file}" ]] && printf "%s\n" "${file}" ||:
+            done < <(makepkg --config <(cat "${makepkg_user_config}" "${makepkg_config}" 2>/dev/null) --packagelist) &&
+            printf "%s\n" "${temp}/PKGBUILD"
+
+            find "${temp}" -name "*.log"
+')
+
+
+if (( ${#files[@]} )); then
+    msg 'Downloading files...'
+    rsync "${rsyncopts[@]}" "${files[@]/#/$server:}" "${TEMPDIR}/" || die
+
+    if is_globfile "${TEMPDIR}"/*.log; then
+        mv "${TEMPDIR}"/*.log "${LOGDEST:-${PWD}}/"
+    fi
+    # missing PKGBUILD download means the build failed
+    if [[ ! -f "${TEMPDIR}/PKGBUILD" ]]; then
+        error "Build failed, check logs in ${LOGDEST:-${PWD}}"
+        exit 1
+    fi
+    mv "${TEMPDIR}/PKGBUILD" "${PWD}/"
+    mv "${TEMPDIR}"/*.pkg.tar* "${PKGDEST:-${PWD}}/"
+else
+    exit 1
+fi

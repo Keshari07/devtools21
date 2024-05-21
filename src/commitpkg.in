@@ -1,0 +1,300 @@
+#!/bin/bash
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+_DEVTOOLS_LIBRARY_DIR=${_DEVTOOLS_LIBRARY_DIR:-@pkgdatadir@}
+# shellcheck source=src/lib/common.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/common.sh
+# shellcheck source=src/lib/util/srcinfo.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/util/srcinfo.sh
+
+source /usr/share/makepkg/util/util.sh
+
+set -eo pipefail
+
+
+check_pkgbuild_validity() {
+	# shellcheck source=contrib/makepkg/PKGBUILD.proto
+	. ./PKGBUILD
+
+	# skip when there are no sources available
+	if (( ! ${#source[@]} )); then
+		return
+	fi
+
+	# validate sources hash algo is at least > sha1
+	local bad_algos=("cksums" "md5sums" "sha1sums")
+	local good_hash_algo=false
+
+	# from makepkg libmakepkg/util/schema.sh
+	for integ in "${known_hash_algos[@]}"; do
+		local sumname="${integ}sums"
+		if [[ -n ${!sumname} ]] && ! in_array "${sumname}" "${bad_algos[@]}"; then
+			good_hash_algo=true
+			break
+		fi
+	done
+
+	if ! $good_hash_algo; then
+		die "PKGBUILD lacks a secure cryptographic checksum, insecure algorithms: ${bad_algos[*]}"
+	fi
+}
+
+# Source makepkg.conf; fail if it is not found
+if [[ -r '/etc/makepkg.conf' ]]; then
+	# shellcheck source=config/makepkg/x86_64.conf
+	source '/etc/makepkg.conf'
+else
+	die '/etc/makepkg.conf not found!'
+fi
+
+# Source user-specific makepkg.conf overrides
+if [[ -r "${XDG_CONFIG_HOME:-$HOME/.config}/pacman/makepkg.conf" ]]; then
+	# shellcheck source=/dev/null
+	source "${XDG_CONFIG_HOME:-$HOME/.config}/pacman/makepkg.conf"
+elif [[ -r "$HOME/.makepkg.conf" ]]; then
+	# shellcheck source=/dev/null
+	source "$HOME/.makepkg.conf"
+fi
+
+cmd=${0##*/}
+
+# Deprecation warning
+if [[ -z $_DEVTOOLS_COMMAND ]]; then
+	warning "${cmd} is deprecated and will be removed. Use 'pkgctl release' instead"
+fi
+
+if [[ ! -f PKGBUILD ]]; then
+	die 'No PKGBUILD file'
+fi
+
+if ! repo_spec=$(git config --local devtools.version) || [[ ${repo_spec} != "${GIT_REPO_SPEC_VERSION}" ]]; then
+	error "repository specs are out of date, try:"
+	msg2 'pkgctl repo configure'
+	exit 1
+fi
+
+if ! repo_variant=$(git config --local devtools.variant) || [[ ${repo_variant} != canonical ]]; then
+	error "cannot release from a repository with none canonical specs (%s), try:" "${repo_variant:-development}"
+	msg2 'pkgctl repo configure'
+	exit 1
+fi
+
+if [[ "$(git symbolic-ref --short HEAD)" != main ]]; then
+	die 'must be run from the main branch'
+fi
+
+source=()
+# shellcheck source=contrib/makepkg/PKGBUILD.proto
+. ./PKGBUILD
+pkgbase=${pkgbase:-$pkgname}
+
+case "$cmd" in
+	commitpkg)
+		if (( $# == 0 )); then
+			die 'Usage: commitpkg <reponame> [-f] [-s server] [-l limit] [-a arch] [commit message]'
+		fi
+		repo="$1"
+		shift
+		;;
+	*pkg)
+		repo="${cmd%pkg}"
+		;;
+	*)
+		die 'Usage: commitpkg <reponame> [-f] [-s server] [-l limit] [-a arch] [commit message]'
+		;;
+esac
+
+
+if (( ${#validpgpkeys[@]} != 0 )); then
+	if [[ -d keys ]]; then
+		for key in "${validpgpkeys[@]}"; do
+			if [[ ! -f keys/pgp/$key.asc ]]; then
+				export-pkgbuild-keys || die 'Failed to export valid PGP keys for source files'
+			fi
+		done
+	else
+		export-pkgbuild-keys || die 'Failed to export valid PGP keys for source files'
+	fi
+
+	git add --force -- keys/pgp/*
+fi
+
+# find files which should be under source control
+needsversioning=(PKGBUILD)
+for s in "${source[@]}"; do
+	[[ $s != *://* ]] && needsversioning+=("$s")
+done
+for i in 'changelog' 'install'; do
+	while read -r file; do
+		# evaluate any bash variables used
+		eval "file=\"$(sed "s/^\(['\"]\)\(.*\)\1\$/\2/" <<< "$file")\""
+		needsversioning+=("$file")
+	done < <(sed -n "s/^[[:space:]]*$i=//p" PKGBUILD)
+done
+for key in "${validpgpkeys[@]}"; do
+	needsversioning+=("keys/pgp/$key.asc")
+done
+
+# assert that they really are controlled by git
+if (( ${#needsversioning[*]} )); then
+	for file in "${needsversioning[@]}"; do
+		# skip none existing files
+		if [[ ! -f "${file}" ]]; then
+			continue
+		fi
+		if ! git ls-files --error-unmatch "$file"; then
+			die "%s is not under version control" "$file"
+		fi
+	done
+fi
+
+
+server=${PACKAGING_REPO_RELEASE_HOST}
+rsyncopts=("${RSYNC_OPTS[@]}" --perms --chmod='ug=rw,o=r')
+archreleaseopts=()
+while getopts ':l:a:s:f' flag; do
+	case $flag in
+		f) archreleaseopts+=('-f') ;;
+		s) server=$OPTARG ;;
+		l) rsyncopts+=("--bwlimit=$OPTARG") ;;
+		a) commit_arch=$OPTARG ;;
+		:) die "Option requires an argument -- '%s'" "$OPTARG" ;;
+		\?) die "Invalid option -- '%s'" "$OPTARG" ;;
+	esac
+done
+shift $(( OPTIND - 1 ))
+
+# check packages for validity
+for _arch in "${arch[@]}"; do
+	if [[ -n $commit_arch && ${_arch} != "$commit_arch" ]]; then
+		continue
+	fi
+	for _pkgname in "${pkgname[@]}"; do
+		fullver=$(get_full_version "$_pkgname")
+
+		if pkgfile=$(find_cached_package "$_pkgname" "$fullver" "$_arch"); then
+			check_package_validity "$pkgfile"
+		fi
+	done
+
+	fullver=$(get_full_version "$pkgbase")
+	if pkgfile=$(find_cached_package "$pkgbase-debug" "$fullver" "$_arch"); then
+		check_package_validity "$pkgfile"
+	fi
+done
+
+# check for PKGBUILD standards
+check_pkgbuild_validity
+
+# auto generate .SRCINFO
+# shellcheck disable=SC2119
+write_srcinfo_file
+git add --force .SRCINFO
+
+if [[ -n $(git status --porcelain --untracked-files=no) ]]; then
+	stat_busy 'Staging files'
+	for f in $(git ls-files --modified); do
+		git add "$f"
+	done
+	for f in $(git ls-files --deleted); do
+		git rm "$f"
+	done
+	stat_done
+
+	msgtemplate="upgpkg: $(get_full_version)"
+	if [[ -n $1 ]]; then
+		stat_busy 'Committing changes'
+		git commit -q -m "${msgtemplate}: ${1}" || die
+		stat_done
+	else
+		[[ -z ${WORKDIR:-} ]] && setup_workdir
+		msgfile=$(mktemp --tmpdir="${WORKDIR}" commitpkg.XXXXXXXXXX)
+		echo "$msgtemplate" > "$msgfile"
+		if [[ -n $GIT_EDITOR ]]; then
+			$GIT_EDITOR "$msgfile" || die
+		elif giteditor=$(git config --get core.editor); then
+			$giteditor "$msgfile" || die
+		elif [[ -n $VISUAL ]]; then
+			$VISUAL "$msgfile" || die
+		elif [[ -n $EDITOR ]]; then
+			$EDITOR "$msgfile" || die
+		else
+			die "No usable editor found (tried \$GIT_EDITOR, git config [core.editor], \$VISUAL, \$EDITOR)."
+		fi
+		[[ -s $msgfile ]] || die
+		stat_busy 'Committing changes'
+		git commit -v -q -F "$msgfile" || die
+		unlink "$msgfile"
+		stat_done
+	fi
+fi
+
+declare -a uploads
+declare -a commit_arches
+declare -a skip_arches
+
+for _arch in "${arch[@]}"; do
+	if [[ -n $commit_arch && ${_arch} != "$commit_arch" ]]; then
+		skip_arches+=("$_arch")
+		continue
+	fi
+
+	for _pkgname in "${pkgname[@]}"; do
+		fullver=$(get_full_version "$_pkgname")
+		if ! pkgfile=$(find_cached_package "$_pkgname" "$fullver" "${_arch}"); then
+			warning "Skipping %s: failed to locate package file" "$_pkgname-$fullver-$_arch"
+			skip_arches+=("$_arch")
+			continue 2
+		fi
+		uploads+=("$pkgfile")
+	done
+
+	fullver=$(get_full_version "$pkgbase")
+	if ! pkgfile=$(find_cached_package "$pkgbase-debug" "$fullver" "$_arch"); then
+		continue
+	fi
+	if ! is_debug_package "$pkgfile"; then
+		continue
+	fi
+	uploads+=("$pkgfile")
+done
+
+for pkgfile in "${uploads[@]}"; do
+	sigfile="${pkgfile}.sig"
+	if [[ ! -f $sigfile ]]; then
+		msg "Signing package %s..." "${pkgfile}"
+		if [[ -n $GPGKEY ]]; then
+			SIGNWITHKEY=(-u "${GPGKEY}")
+		fi
+		gpg --detach-sign --use-agent --no-armor "${SIGNWITHKEY[@]}" "${pkgfile}" || die
+	fi
+	if ! gpg --verify "$sigfile" "$pkgfile" >/dev/null 2>&1; then
+		die "Signature %s is incorrect!" "$sigfile"
+	fi
+	uploads+=("$sigfile")
+done
+
+for _arch in "${arch[@]}"; do
+	if ! in_array "$_arch" "${skip_arches[@]}"; then
+		commit_arches+=("$_arch")
+	fi
+done
+
+if [[ ${#commit_arches[*]} -gt 0 ]]; then
+	archrelease "${archreleaseopts[@]}" "${commit_arches[@]/#/$repo-}" || die
+fi
+
+if [[ ${#uploads[*]} -gt 0 ]]; then
+	new_uploads=()
+
+	# convert to absolute paths so rsync can work with colons (epoch)
+	while read -r -d '' upload; do
+		new_uploads+=("$upload")
+	done < <(realpath -z "${uploads[@]}")
+
+	uploads=("${new_uploads[@]}")
+	unset new_uploads
+	msg 'Uploading all package and signature files'
+	rsync "${rsyncopts[@]}" "${uploads[@]}" "$server:staging/$repo/" || die
+fi

@@ -1,0 +1,74 @@
+pkgctl(1)
+=========
+
+Name
+----
+pkgctl - Unified command-line frontend for devtools
+
+Synopsis
+--------
+pkgctl [SUBCOMMAND] [OPTIONS]
+
+Description
+-----------
+
+Command-line utility serving as a unified interface for multiple development tools. 
+This tool aims to simplify and optimize interactions with devtools by offering 
+various subcommands for executing tasks related to package management, repository management, 
+version control, among others.
+
+Utilizing pkgctl enables users to efficiently administer their development workflows.
+
+Options
+-------
+
+*-V, --version*::
+	Show pkgctl version information
+
+*-h, --help*::
+	Show a help text
+
+Subcommands
+-----------
+
+pkgctl aur::
+	Interact with the Arch User Repository
+
+pkgctl auth::
+	Authenticate with services like GitLab
+
+pkgctl build::
+	Build packages inside a clean chroot
+
+pkgctl db::
+	Pacman database modification for package update, move etc
+
+pkgctl diff::
+	Compare package files using different modes
+
+pkgctl release::
+	Release step to commit, tag and upload build artifacts
+
+pkgctl repo::
+	Manage Git packaging repositories and their configuration
+
+pkgctl search::
+	Search for an expression across the GitLab packaging group
+
+pkgctl version::
+	Check and manage package versions against upstream
+
+See Also
+--------
+
+pkgctl-aur(1)
+pkgctl-auth(1)
+pkgctl-build(1)
+pkgctl-db(1)
+pkgctl-diff(1)
+pkgctl-release(1)
+pkgctl-repo(1)
+pkgctl-search(1)
+pkgctl-version(1)
+
+include::include/footer.asciidoc[]

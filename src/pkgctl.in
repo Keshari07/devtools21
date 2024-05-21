@@ -1,0 +1,141 @@
+#!/bin/bash
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+_DEVTOOLS_LIBRARY_DIR=${_DEVTOOLS_LIBRARY_DIR:-@pkgdatadir@}
+# shellcheck source=src/lib/common.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/common.sh
+# shellcheck source=src/lib/config.sh
+source "${_DEVTOOLS_LIBRARY_DIR}"/lib/config.sh
+
+set -e
+
+
+usage() {
+	local -r COMMAND=${BASH_SOURCE[0]##*/}
+	cat <<- _EOF_
+		Usage: ${COMMAND} [COMMAND] [OPTIONS]
+
+		Unified command-line frontend for devtools.
+
+		COMMANDS
+		    aur     Interact with the Arch User Repository
+		    auth    Authenticate with services like GitLab
+		    build   Build packages inside a clean chroot
+		    db      Pacman database modification for package update, move etc
+		    diff    Compare package files using different modes
+		    release Release step to commit, tag and upload build artifacts
+		    repo    Manage Git packaging repositories and their configuration
+		    search  Search for an expression across the GitLab packaging group
+		    version Check and manage package versions against upstream
+
+		OPTIONS
+		    -h, --help     Show this help text
+_EOF_
+}
+
+if (( $# < 1 )); then
+	usage
+	exit 1
+fi
+
+pkgctl_version_print() {
+	cat <<- _EOF_
+		pkgctl @buildtoolver@
+_EOF_
+}
+
+export _DEVTOOLS_COMMAND='pkgctl'
+
+setup_workdir
+
+load_devtools_config
+
+# command checking
+while (( $# )); do
+	case $1 in
+		-h|--help)
+			usage
+			exit 0
+			;;
+		aur)
+			_DEVTOOLS_COMMAND+=" $1"
+			shift
+			# shellcheck source=src/lib/aur.sh
+			source "${_DEVTOOLS_LIBRARY_DIR}"/lib/aur.sh
+			pkgctl_aur "$@"
+			exit 0
+			;;
+		build)
+			_DEVTOOLS_COMMAND+=" $1"
+			shift
+			# shellcheck source=src/lib/build/build.sh
+			source "${_DEVTOOLS_LIBRARY_DIR}"/lib/build/build.sh
+			pkgctl_build "$@"
+			exit 0
+			;;
+		repo)
+			_DEVTOOLS_COMMAND+=" $1"
+			shift
+			# shellcheck source=src/lib/repo.sh
+			source "${_DEVTOOLS_LIBRARY_DIR}"/lib/repo.sh
+			pkgctl_repo "$@"
+			exit 0
+			;;
+		auth)
+			_DEVTOOLS_COMMAND+=" $1"
+			shift
+			# shellcheck source=src/lib/auth.sh
+			source "${_DEVTOOLS_LIBRARY_DIR}"/lib/auth.sh
+			pkgctl_auth "$@"
+			exit 0
+			;;
+		db)
+			_DEVTOOLS_COMMAND+=" $1"
+			shift
+			# shellcheck source=src/lib/auth.sh
+			source "${_DEVTOOLS_LIBRARY_DIR}"/lib/db.sh
+			pkgctl_db "$@"
+			exit 0
+			;;
+		diff)
+			_DEVTOOLS_COMMAND+=" $1"
+			shift
+			diffpkg "$@"
+			exit 0
+			;;
+		release)
+			_DEVTOOLS_COMMAND+=" $1"
+			shift
+			# shellcheck source=src/lib/release.sh
+			source "${_DEVTOOLS_LIBRARY_DIR}"/lib/release.sh
+			pkgctl_release "$@"
+			exit 0
+			;;
+		search)
+			_DEVTOOLS_COMMAND+=" $1"
+			shift
+			# shellcheck source=src/lib/release.sh
+			source "${_DEVTOOLS_LIBRARY_DIR}"/lib/search.sh
+			pkgctl_search "$@"
+			exit 0
+			;;
+		version)
+			_DEVTOOLS_COMMAND+=" $1"
+			shift
+			# shellcheck source=src/lib/version.sh
+			source "${_DEVTOOLS_LIBRARY_DIR}"/lib/version.sh
+			pkgctl_version "$@"
+			exit 0
+			;;
+		--version|-V)
+			_DEVTOOLS_COMMAND+=" $1"
+			shift
+			pkgctl_version_print
+			exit 0
+			;;
+		*)
+			die "invalid command: %s" "$1"
+			;;
+	esac
+done

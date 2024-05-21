@@ -1,0 +1,41 @@
+pkgctl-repo-configure(1)
+========================
+
+Name
+----
+pkgctl-repo-configure - Configure a clone according to distro specs
+
+Synopsis
+--------
+pkgctl repo configure [OPTIONS] [PATH...]
+
+Description
+-----------
+
+Configure Git packaging repositories according to distro specs and
+'makepkg.conf' settings.
+
+Git author information and the used signing key is set up from
+'makepkg.conf' read from any valid location like '/etc' or 'XDG_CONFIG_HOME'.
+
+The remote protocol is automatically determined from the author email
+address by choosing SSH for all official packager identities and
+read-only HTTPS otherwise.
+
+Git default excludes and hooks are applied to the configured repo.
+
+Options
+-------
+
+*--protocol* 'https'::
+	Configure remote url to use https
+
+*-j, --jobs* 'N'::
+	Run up to N jobs in parallel. By default the number of jobs is equal to the
+	number of available processing units. For sequential processing this option
+	needs to be passed with 1.
+
+*-h, --help*::
+	Show a help text
+
+include::include/footer.asciidoc[]

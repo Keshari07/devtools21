@@ -1,0 +1,66 @@
+pkgctl-version-check(1)
+=======================
+
+Name
+----
+pkgctl-version-check - Compares local package versions against upstream
+
+Synopsis
+--------
+pkgctl version check [OPTIONS] [PKGBASE...]
+
+Description
+-----------
+
+Compares the versions of packages in the local packaging repository against
+their latest upstream versions.
+
+Upon execution, it generates a grouped list that provides detailed insights
+into each package's status. For each package, it displays the current local
+version alongside the latest version available upstream.
+
+Outputs a summary of up-to-date packages, out-of-date packages, and any check
+failures.
+
+This simplifies the maintenance of PKGBUILD files, reducing the manual effort
+required to track version changes from upstream sources.
+
+Configuration
+-------------
+
+Uses nvchecker(1) and a `.nvchecker.toml` file located alongside the
+PKGBUILD. Refer to the configuration section in pkgctl-version(1).
+
+Options
+-------
+
+*-v, --verbose*::
+	Display results including up-to-date versions
+
+*-h, --help*::
+	Show a help text
+
+Exit Codes
+----------
+
+On exit, return one of the following codes:
+
+*0*::
+	Normal exit condition, all checked versions are up-to-date
+
+*1*::
+	Unknown cause of failure
+
+*2*::
+	Normal exit condition, but there are out-of-date versions
+
+*3*::
+	Failed to run some version checks
+
+See Also
+--------
+
+pkgctl-version(1)
+nvchecker(1)
+
+include::include/footer.asciidoc[]

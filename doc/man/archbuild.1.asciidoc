@@ -1,0 +1,48 @@
+archbuild(1)
+============
+
+Name
+----
+archbuild - a script to build an Arch Linux package inside a clean chroot.
+
+Synopsis
+--------
+archbuild [options] -- [makechrootpkg args]
+
+Description
+-----------
+
+'archbuild' is a script to build an Arch Linux package. archbuild is part of devtools but should only be used via one of the included symlinks:
+
+* extra-x86_64-build
+* gnome-unstable-x86_64-build
+* kde-unstable-x86_64-build
+* multilib-build
+* multilib-staging-build
+* multilib-testing-build
+* staging-x86_64-build
+* testing-x86_64-build
+
+The symlink used to run it will be inspected by archbuild, to determine which target you want it to use. It will load the available pacman configuration from 'reponame-arch.conf' with a fallback to 'reponame.conf' from {pkgdatadir}/pacman.conf.d. The makepkg configuration is loaded from 'repo-arch.conf' with a fallback to 'reponame.conf' from {pkgdatadir}/makepkg.conf.d.
+
+It will also load the bind mount configuration from 'mount.d/arch' in {pkgdatadir}. The file format is that each line starting with ro and rw will be used, other lines will be ignored, and the rest of the used line is out/path:in/path preceded by a space as a separator. ro means it is a read-only mount, rw means a read-write mount.
+
+Options
+-------
+
+*-h*::
+	Output command line options.
+
+*-c*::
+	Recreate the chroot before building.
+
+*-r* <dir>::
+	Create chroots in this directory.
+
+
+See Also
+--------
+
+devtools(7)
+
+include::include/footer.asciidoc[]

@@ -1,0 +1,73 @@
+pkgctl-diff(1)
+==============
+
+Name
+----
+pkgctl-diff - Compare package files using different modes.
+
+Synopsis
+--------
+pkgctl diff [OPTIONS] [MODES] [FILE|PKGNAME...]
+
+Description
+-----------
+
+Searches for a locally built package corresponding to the PKGBUILD, and
+downloads the last version of that package from the Pacman repositories.
+It then compares the package archives using different modes while using
+simple tar content list by default.
+
+When given one package, use it to diff against the locally built one.
+When given two packages, diff both packages against each other.
+
+In either case, a package name will be converted to a filename from the cache
+or pool, and 'pkgctl diff' will proceed as though this filename was initially
+specified.
+
+Options
+-------
+
+*-M, --makepkg-config*::
+	Set an alternate makepkg configuration file
+
+*-P, --pool*='DIR'::
+	Search diff target in pool dir (default `'/srv/ftp/pool'`)
+
+*-v, --verbose*::
+	Provide more detailed/unfiltered output
+
+*-h, --help*::
+	Show a help text
+
+Output Options
+--------------
+
+*--color*[='WHEN']::
+	Color output; 'WHEN' is `'never'`, `'always'`, or `'auto'`; Plain *--color* means *--color='auto'*
+
+*-u, -U, --unified*::
+	Output 3 lines of unified context
+
+*-y, --side-by-side*::
+	Output in two columns
+
+*-W, --width*[='NUM']::
+	Output at most 'NUM' (default `'auto'`) print columns; 'NUM' can be `'auto'`, `'columns'` or a number.
+	`'auto'` will be resolved to the maximum line length of both files, guaranteeing the diff to be uncut.
+
+Modes
+-----
+
+*-l, --list*::
+	Activate tar content list diff mode (default)
+
+*-d, --diffoscope*::
+	Activate diffoscope diff mode
+
+*-p, --pkginfo*::
+	Activate .PKGINFO diff mode
+
+*-b, --buildinfo*::
+	Activate .BUILDINFO diff mode
+
+include::include/footer.asciidoc[]

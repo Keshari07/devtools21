@@ -1,0 +1,114 @@
+pkgctl-build(1)
+===============
+
+Name
+----
+pkgctl-build - Build packages inside a clean chroot
+
+Synopsis
+--------
+pkgctl build [OPTIONS] [PATH...]
+
+Description
+-----------
+
+Build packages in clean chroot environment, offering various options
+and functionalities to customize the package building process.
+
+Build Options
+-------------
+
+*--arch* 'ARCH'::
+	Specify architectures to build for (disables auto-detection)
+
+*--repo* 'REPO'::
+	Specify target repository for new packages not in any official repo.
+	Fallback to `'extra'` when building packages that are not present in any
+	official repository yet. Using this option is disallowed if the package is
+	already released, as it would circumvent the auto-detection safeguard.
+
+*-s, --staging*::
+	Build against the staging counterpart of the auto-detected repo
+
+*-t, --testing*::
+	Build against the testing counterpart of the auto-detected repo
+
+*-o, --offload*::
+	Build on a remote server and transfer artifacts afterwards
+
+*-c, --clean*::
+	Recreate the chroot before building
+
+*--inspect* 'WHEN'::
+	Spawn an interactive shell to inspect the chroot after building. Useful to ease the debugging of a package build. +
+	Possible values for 'WHEN' are `'never'`, `'always'` or `'failure'`
+
+*-w, --worker* 'SLOT'::
+	Name of the worker slot, useful for concurrent builds. By default the slot
+	is automatically assigned to the current tty pts number. In case the caller
+	is not a tty, choose a random slot between 1 and number of available
+	processing units.
+
+*--nocheck*::
+	Do not run the check() function in the PKGBUILD
+
+Install Options
+---------------
+
+*-I, --install-to-chroot* 'FILE'::
+	Install a package to the working copy of the chroot
+
+*-i, --install-to-host* 'MODE'::
+	Install the built packages to the host system. Useful when one wants to verify that the package works as intended.
+	* When 'MODE' is 'all', this installs all built packages
+	* When 'MODE' is 'auto', this installs all built packages which are currently installed
+
+PKGBUILD Options
+----------------
+
+*--pkgver*='PKGVER'::
+	Set pkgver, reset pkgrel and update checksums
+
+*--pkgrel*='PKGREL'::
+	Set pkgrel to a given value
+
+*--rebuild*::
+	Increment the current pkgrel variable
+
+*--update-checksums*::
+	Force computation and update of the checksums by disabling auto-detection. +
+	Should only be used in special circumstances, like when adding new patch
+	files to the source array. During regular packaging operations, checksums
+	are either automatically updated when upgrading a package using `--pkgver`
+	or should remain immutable during rebuilds.
+
+*-e, --edit*::
+	Edit the PKGBUILD before building
+
+Release Options
+---------------
+
+*-r, --release*::
+	Automatically commit, tag and release after building +
+	Specifying this option is required when using any of the following options
+	in this section
+
+*-m, --message* 'MSG'::
+	Use the given <msg> as the commit message
+
+*-u, --db-update*::
+	Automatically update the pacman database as last action
+
+Options
+-------
+
+*-h, --help*::
+	Show a help text
+
+See Also
+--------
+
+pkgctl-release(1)
+pkgctl-db-update(1)
+
+include::include/footer.asciidoc[]
